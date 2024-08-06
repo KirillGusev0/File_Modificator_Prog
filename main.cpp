@@ -15,7 +15,7 @@ bool deleteInputFiles;
 bool overwriteFiles;
 int pollInterval;
 quint64 xorValue;
-bool singleRun; // Переменная для хранения флага разового запуска
+bool singleRun;
 
 // Функция для обработки файлов
 void processFiles() {
@@ -23,12 +23,17 @@ void processFiles() {
     // Поиск файлов, соответствующих маске
     QStringList files = directory.entryList(QStringList() << inputMask, QDir::Files);
 
+    if (files.isEmpty()) {
+        qDebug() << "Нет файлов, соответствующих маске:" << inputMask;
+        return;
+    }
+
     for (const QString &fileName : files) {
         QFile inputFile(fileName);
         
         // Проверка, можно ли открыть файл для чтения
         if (!inputFile.open(QIODevice::ReadOnly)) {
-            qDebug() << "Не удалось открыть файл для чтения:" << fileName;
+            qDebug() << "Не удалось открыть файл для чтения:" << fileName << ", ошибка:" << inputFile.errorString();
             continue;
         }
 
@@ -44,7 +49,7 @@ void processFiles() {
         // Формирование имени выходного файла
         QString outputFileName = outputPath + "/" + fileName;
 
-        // Проверка, требуется ли перезаписывать выходной файл
+        // Проверка, нужно ли перезаписывать выходной файл
         if (QFile::exists(outputFileName) && !overwriteFiles) {
             int counter = 1;
             while (QFile::exists(outputFileName)) {
@@ -56,7 +61,7 @@ void processFiles() {
         // Открытие выходного файла для записи
         QFile outputFile(outputFileName);
         if (!outputFile.open(QIODevice::WriteOnly)) {
-            qDebug() << "Не удалось открыть файл для записи:" << outputFileName;
+            qDebug() << "Не удалось открыть файл для записи:" << outputFileName << ", ошибка:" << outputFile.errorString();
             continue;
         }
 
@@ -64,13 +69,13 @@ void processFiles() {
         outputFile.write(fileData);
         outputFile.close();
 
-        // Удаление входного файла, если необходимо
+        // Удаление входного файла, если это указано в настройках
         if (deleteInputFiles) {
             inputFile.remove();
         }
     }
 
-    // Если разовый запуск, то завершаем приложение после обработки файлов
+    // Если разовый запуск, завершаем приложение после обработки файлов
     if (singleRun) {
         QCoreApplication::quit();
     }
@@ -118,6 +123,21 @@ int main(int argc, char *argv[]) {
     pollInterval = parser.value(intervalOption).toInt();
     xorValue = parser.value(xorValueOption).toULongLong(nullptr, 16);
     singleRun = parser.isSet(singleRunOption); // Получение значения для разового запуска
+
+    // Проверка обязательных аргументов
+    if (inputMask.isEmpty() || outputPath.isEmpty()) {
+        qDebug() << "Маска входных файлов и путь для сохранения результирующих файлов должны быть заданы.";
+        return 1;
+    }
+
+    // Создание выходной директории, если не существует
+    QDir dir;
+    if (!dir.exists(outputPath)) {
+        if (!dir.mkpath(outputPath)) {
+            qDebug() << "Не удалось создать выходную директорию:" << outputPath;
+            return 1;
+        }
+    }
 
     // Если разовый запуск, выполняем обработку файлов один раз
     if (singleRun) {
